@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-HF_REPO_ID = os.getenv("HF_REPO_ID", "your-hf-username/ms-calib-synergy-plant-disease")
+HF_REPO_ID = os.getenv("HF_REPO_ID", "NaeemSheikh123/ms-calib-synergy-plant-disease")
 MODEL_FILENAME = "ms_calib_synergy_fp16.pt"
 
 @st.cache_resource
