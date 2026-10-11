@@ -1,5 +1,5 @@
 import os
-import json
+import io
 import time
 import cv2
 import torch
@@ -11,6 +11,7 @@ import timm
 import streamlit as st
 from PIL import Image
 from huggingface_hub import hf_hub_download
+from fpdf import FPDF
 
 st.set_page_config(
     page_title="MS-CalibSynergy-Net | Plant Pathology Diagnostic System",
@@ -21,34 +22,34 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
     .hero-banner {
         background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
         border: 1px solid rgba(46, 204, 113, 0.35);
-        border-radius: 14px;
-        padding: 22px 28px;
-        margin-bottom: 20px;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 18px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     }
     .hero-title {
-        font-size: 1.85rem;
+        font-size: 1.75rem;
         font-weight: 800;
         color: #ffffff;
         margin: 0 0 6px 0;
         letter-spacing: -0.3px;
     }
     .hero-sub {
-        font-size: 0.98rem;
+        font-size: 0.95rem;
         color: #d1f2eb;
-        margin-bottom: 14px;
+        margin-bottom: 12px;
     }
-    .badge-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
     .metric-pill {
         background: rgba(255, 255, 255, 0.08);
         border: 1px solid rgba(255, 255, 255, 0.18);
         border-radius: 20px;
-        padding: 5px 14px;
-        font-size: 0.82rem;
+        padding: 4px 12px;
+        font-size: 0.80rem;
         font-weight: 600;
         color: #f8f9f9;
     }
@@ -56,18 +57,18 @@ st.markdown("""
     .kpi-card {
         background: #161b22;
         border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 16px 18px;
+        border-radius: 10px;
+        padding: 14px 16px;
         text-align: center;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
-    .kpi-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.8px; color: #8b949e; margin-bottom: 4px; }
-    .kpi-value { font-size: 1.45rem; font-weight: 800; color: #f0f6fc; }
-    .kpi-sub { font-size: 0.76rem; color: #58a6ff; margin-top: 3px; }
+    .kpi-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.8px; color: #8b949e; margin-bottom: 4px; }
+    .kpi-value { font-size: 1.35rem; font-weight: 800; color: #f0f6fc; }
+    .kpi-sub { font-size: 0.74rem; color: #58a6ff; margin-top: 3px; }
     .triage-pass {
         background: rgba(35, 134, 54, 0.18);
         border-left: 5px solid #2ea043;
-        padding: 14px 18px;
+        padding: 12px 16px;
         border-radius: 8px;
         color: #aff5b4;
         font-weight: 600;
@@ -76,11 +77,18 @@ st.markdown("""
     .triage-warn {
         background: rgba(210, 153, 34, 0.18);
         border-left: 5px solid #d29922;
-        padding: 14px 18px;
+        padding: 12px 16px;
         border-radius: 8px;
         color: #f8e3a1;
         font-weight: 600;
         margin: 12px 0;
+    }
+    .control-box {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -161,47 +169,87 @@ def make_heatmap_overlay(rgb_224, cam_norm):
     heat = cv2.cvtColor(cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
     return cv2.addWeighted(rgb_224, 0.52, heat, 0.48, 0)
 
+def generate_pdf_report(specimen_name, pred_cls, conf_val, entropy_val, cos_sim, triage_status, top5_data, input_img_rgb, cam_overlay_rgb):
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    pdf.set_fill_color(22, 34, 42)
+    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_xy(12, 6)
+    pdf.cell(0, 8, "MS-CalibSynergy-Net: Plant Pathology Diagnostic Report", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(12, 14)
+    pdf.cell(0, 6, "AI-Assisted Foliar Disease Identification & Explainability Telemetry", ln=True)
+
+    pdf.set_text_color(40, 40, 40)
+    pdf.set_xy(12, 34)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, "1. Specimen Diagnostic Summary", ln=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    info_lines = [
+        f"Specimen Identifier: {specimen_name}",
+        f"Diagnosed Pathology: {pred_cls}",
+        f"Calibrated Prediction Confidence: {conf_val * 100:.2f}%",
+        f"Predictive Shannon Entropy: {entropy_val:.3f} (Max: 2.71)",
+        f"Grad-CAM Attribution Similarity: {cos_sim:.3f}",
+        f"Triage Determination: {triage_status}"
+    ]
+    pdf.set_x(14)
+    for line in info_lines:
+        pdf.set_x(14)
+        pdf.cell(0, 5, line, ln=True)
+
+    tmp_in = "temp_input.jpg"
+    tmp_cam = "temp_cam.jpg"
+    cv2.imwrite(tmp_in, cv2.cvtColor(input_img_rgb, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(tmp_cam, cv2.cvtColor(cam_overlay_rgb, cv2.COLOR_RGB2BGR))
+
+    pdf.set_xy(12, 74)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, "2. Specimen Visual Evidence & Explainability Heatmap", ln=True)
+
+    pdf.image(tmp_in, x=20, y=82, w=75, h=75)
+    pdf.image(tmp_cam, x=115, y=82, w=75, h=75)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_xy(20, 159)
+    pdf.cell(75, 5, "Input Specimen (Preprocessed)", align="C")
+    pdf.set_xy(115, 159)
+    pdf.cell(75, 5, "Attribution Consensus Map", align="C")
+
+    pdf.set_xy(12, 170)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, "3. Differential Diagnostic Probabilities (Top-5 Classes)", ln=True)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_xy(14, 178)
+    pdf.cell(100, 6, "Pathology Class", border=1)
+    pdf.cell(60, 6, "Calibrated Posterior Probability", border=1, ln=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    for cls_name, p_val in top5_data:
+        pdf.set_x(14)
+        pdf.cell(100, 6, cls_name, border=1)
+        pdf.cell(60, 6, f"{p_val * 100:.2f}%", border=1, ln=True)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_xy(12, 260)
+    pdf.cell(0, 5, "System Architecture: MS-CalibSynergy-Net | Evaluated on Held-Out Specimen Splits", align="C")
+
+    pdf_bytes = pdf.output()
+    for tmp_file in [tmp_in, tmp_cam]:
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
+    return pdf_bytes
+
 dn_model, ef_model, rn_model, meta_net, CFG, device = load_synergy_system()
 SHORT_NAMES = CFG["short_names"]
 MEAN = np.array(CFG["dataset_mean"], dtype=np.float32)
 STD = np.array(CFG["dataset_std"], dtype=np.float32)
-
-with st.sidebar:
-    st.markdown("### ⚙️ Diagnostic Control Panel")
-    sample_files = sorted([f for f in os.listdir(".") if f.startswith("sample_") and f.upper().endswith(".JPG")])
-
-    input_mode = st.radio(
-        "Specimen Input Source:",
-        ["Test Set Reference Specimens", "Upload Custom Image"],
-        index=0
-    )
-
-    rgb_input = None
-    specimen_label = "Uploaded Specimen"
-
-    if input_mode == "Test Set Reference Specimens" and len(sample_files) > 0:
-        selected_sample = st.selectbox("Select Reference Leaf:", sample_files, index=0)
-        rgb_input = np.array(Image.open(selected_sample).convert("RGB"))
-        specimen_label = selected_sample
-    else:
-        uploaded_file = st.file_uploader("Upload Leaf Image (JPG/PNG)", type=["jpg", "jpeg", "png"])
-        if uploaded_file is not None:
-            rgb_input = np.array(Image.open(uploaded_file).convert("RGB"))
-            specimen_label = uploaded_file.name
-        elif len(sample_files) > 0:
-            rgb_input = np.array(Image.open(sample_files[0]).convert("RGB"))
-            specimen_label = f"{sample_files[0]} (Default)"
-
-    st.markdown("---")
-    st.markdown("### 🛡️ Inference Configuration")
-    use_bilateral = st.toggle("Bilateral Sensor-Noise Filter", value=True, help="Applies edge-preserving bilateral filtering (d=5, sigma=35) prior to normalization.")
-    use_4view_tta = st.toggle("4-View Test-Time Augmentation", value=True, help="Averages predictions across Original, Horizontal Flip, Vertical Flip, and 90° Rotation.")
-    custom_temp = st.slider("Calibration Temperature (T)", min_value=0.20, max_value=2.00, value=float(round(CFG["opt_temp"], 2)), step=0.05)
-    entropy_thresh = st.slider("Triage Entropy Threshold (τ)", min_value=0.15, max_value=1.20, value=float(CFG.get("entropy_threshold", 0.65)), step=0.05)
-
-    st.markdown("---")
-    st.markdown("**Developed by:**\n**Md Naeem Sheikh**\n*M.Sc. in CSE (Data Science)*")
-    st.caption("Weights Registry: `NaeemSheikh123/ms-calib-synergy-plant-disease`")
 
 st.markdown("""
 <div class="hero-banner">
@@ -217,6 +265,45 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown('<div class="control-box">', unsafe_allow_html=True)
+st.markdown("### 📥 Foliar Specimen Input & Diagnostics Control")
+
+c_in1, c_in2, c_in3 = st.columns([1.2, 1.2, 1])
+
+sample_files = sorted([f for f in os.listdir(".") if f.startswith("sample_") and f.upper().endswith(".JPG")])
+
+with c_in1:
+    input_mode = st.radio(
+        "Source:",
+        ["Test Set Reference Specimens", "Upload Custom Leaf Image"],
+        horizontal=True
+    )
+    if input_mode == "Test Set Reference Specimens" and len(sample_files) > 0:
+        selected_sample = st.selectbox("Select Leaf:", sample_files, index=0)
+        rgb_input = np.array(Image.open(selected_sample).convert("RGB"))
+        specimen_label = selected_sample
+    else:
+        uploaded_file = st.file_uploader("Upload Image (JPG/PNG)", type=["jpg", "jpeg", "png"])
+        if uploaded_file is not None:
+            rgb_input = np.array(Image.open(uploaded_file).convert("RGB"))
+            specimen_label = uploaded_file.name
+        elif len(sample_files) > 0:
+            rgb_input = np.array(Image.open(sample_files[0]).convert("RGB"))
+            specimen_label = f"{sample_files[0]} (Default)"
+        else:
+            rgb_input = None
+            specimen_label = "None"
+
+with c_in2:
+    use_bilateral = st.toggle("Bilateral Denoising Gate", value=True, help="Removes sensor noise while preserving leaf lesion margins.")
+    use_4view_tta = st.toggle("4-View Test-Time Augmentation", value=True, help="Consensus across rotational views.")
+
+with c_in3:
+    custom_temp = st.slider("Calibration Temperature (T)", min_value=0.20, max_value=2.00, value=float(round(CFG["opt_temp"], 2)), step=0.05)
+    entropy_thresh = st.slider("Triage Threshold (τ)", min_value=0.15, max_value=1.20, value=float(CFG.get("entropy_threshold", 0.65)), step=0.05)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 tab_studio, tab_benchmarks, tab_api = st.tabs([
     "🔬 Diagnostic & Explainability Studio",
@@ -278,18 +365,20 @@ with tab_studio:
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predicted Classification</div><div class="kpi-value" style="color:#2ecc71;">{SHORT_NAMES[top_cls]}</div><div class="kpi-sub">File: {specimen_label[:26]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predicted Pathology</div><div class="kpi-value" style="color:#2ecc71;">{SHORT_NAMES[top_cls]}</div><div class="kpi-sub">File: {specimen_label[:26]}</div></div>', unsafe_allow_html=True)
         with k2:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Calibrated Confidence</div><div class="kpi-value">{conf*100:.2f}%</div><div class="kpi-sub">Temperature Scaling (T = {custom_temp:.2f})</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Calibrated Confidence</div><div class="kpi-value">{conf*100:.2f}%</div><div class="kpi-sub">Temperature Scaled (T = {custom_temp:.2f})</div></div>', unsafe_allow_html=True)
         with k3:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predictive Entropy H(p)</div><div class="kpi-value">{entropy:.3f} <span style="font-size:0.9rem;color:#8b949e;">/ {max_entropy:.2f}</span></div><div class="kpi-sub">Threshold τ = {entropy_thresh:.2f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predictive Entropy H(p)</div><div class="kpi-value">{entropy:.3f} <span style="font-size:0.85rem;color:#8b949e;">/ {max_entropy:.2f}</span></div><div class="kpi-sub">Threshold τ = {entropy_thresh:.2f}</div></div>', unsafe_allow_html=True)
         with k4:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Spatial CAM Similarity</div><div class="kpi-value">{cos_sim:.3f}</div><div class="kpi-sub">Inference Time: {infer_ms:.0f} ms ({device.type.upper()})</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">CAM Spatial Similarity</div><div class="kpi-value">{cos_sim:.3f}</div><div class="kpi-sub">Inference Time: {infer_ms:.0f} ms ({device.type.upper()})</div></div>', unsafe_allow_html=True)
 
         if entropy < entropy_thresh:
-            st.markdown(f'<div class="triage-pass">✅ <b>AUTOMATED DIAGNOSIS ACCEPTED:</b> Predictive entropy (H = {entropy:.3f}) is below the referral threshold (τ = {entropy_thresh:.2f}). High-confidence prediction verified for <b>{SHORT_NAMES[top_cls]}</b>.</div>', unsafe_allow_html=True)
+            triage_text = "AUTOMATED DIAGNOSIS ACCEPTED"
+            st.markdown(f'<div class="triage-pass">✅ <b>AUTOMATED DIAGNOSIS ACCEPTED:</b> Predictive entropy (H = {entropy:.3f}) is below the threshold (τ = {entropy_thresh:.2f}). Reliable diagnosis confirmed for <b>{SHORT_NAMES[top_cls]}</b>.</div>', unsafe_allow_html=True)
         else:
-            st.markdown(f'<div class="triage-warn">⚠️ <b>UNCERTAINTY TRIAGE ALERT:</b> Elevated predictive entropy detected (H = {entropy:.3f} ≥ τ = {entropy_thresh:.2f}). Specimen flagged for manual agronomist inspection.</div>', unsafe_allow_html=True)
+            triage_text = "UNCERTAINTY TRIAGE ALERT (REFER TO EXPERT)"
+            st.markdown(f'<div class="triage-warn">⚠️ <b>UNCERTAINTY TRIAGE ALERT:</b> Elevated predictive entropy detected (H = {entropy:.3f} ≥ τ = {entropy_thresh:.2f}). Specimen flagged for manual examination.</div>', unsafe_allow_html=True)
 
         st.markdown("#### 🔍 Multi-Backbone Grad-CAM Spatial Attribution")
         v1, v2, v3, v4 = st.columns(4)
@@ -300,26 +389,27 @@ with tab_studio:
         with v3:
             st.image(make_heatmap_overlay(img_resized, cam_ef), caption="3. EfficientNet-B0 Grad-CAM (Morphology Stream)", use_container_width=True)
         with v4:
-            st.image(make_heatmap_overlay(img_resized, cam_syn), caption=f"4. Combined Attribution Map (Cosine Sim: {cos_sim:.3f})", use_container_width=True)
+            cam_overlay_img = make_heatmap_overlay(img_resized, cam_syn)
+            st.image(cam_overlay_img, caption=f"4. Consensus Attribution Map (Sim: {cos_sim:.3f})", use_container_width=True)
 
         st.markdown("---")
         b_left, b_right = st.columns([1.15, 1])
 
         with b_left:
-            st.markdown("#### 📈 Top-5 Calibrated Class Probabilities")
+            st.markdown("#### 📈 Top-5 Calibrated Posterior Probabilities")
             top5_idx = np.argsort(probs)[::-1][:5]
-            for rank_i, idx_t in enumerate(top5_idx, 1):
-                p_val = float(probs[idx_t])
-                st.progress(p_val, text=f"#{rank_i} {SHORT_NAMES[idx_t]} — {p_val*100:.2f}%")
+            top5_pairs = [(SHORT_NAMES[i], float(probs[i])) for i in top5_idx]
+            for rank_i, (c_name, p_val) in enumerate(top5_pairs, 1):
+                st.progress(p_val, text=f"#{rank_i} {c_name} — {p_val*100:.2f}%")
 
         with b_right:
             st.markdown(f"#### 🧠 Per-Backbone Probability Breakdown (`{SHORT_NAMES[top_cls]}`)")
             stream_df = pd.DataFrame({
                 "Model Component": [
-                    "DenseNet-121 (Fine-Grained Texture Stream)",
-                    "EfficientNet-B0 (Multi-Scale Morphology Stream)",
-                    "ResNet-50 (Deep Residual Stream)",
-                    "MS-CalibSynergy-Net (Calibrated Ensemble Output)"
+                    "DenseNet-121 (Texture Stream)",
+                    "EfficientNet-B0 (Morphology Stream)",
+                    "ResNet-50 (Residual Stream)",
+                    "MS-CalibSynergy-Net (Calibrated Output)"
                 ],
                 "Confidence (%)": [
                     round(float(dn_prob_vec[top_cls]) * 100, 2),
@@ -330,20 +420,23 @@ with tab_studio:
             })
             st.dataframe(stream_df, use_container_width=True, hide_index=True)
 
-            report_payload = {
-                "specimen": specimen_label,
-                "predicted_class": SHORT_NAMES[top_cls],
-                "calibrated_confidence_pct": round(conf * 100, 2),
-                "shannon_entropy": round(entropy, 4),
-                "spatial_consensus_cosine_sim": round(cos_sim, 4),
-                "triage_decision": "ACCEPTED" if entropy < entropy_thresh else "MANUAL_REVIEW_REQUIRED",
-                "top5_probabilities": {SHORT_NAMES[i]: round(float(probs[i]), 4) for i in top5_idx}
-            }
+            pdf_report_bytes = generate_pdf_report(
+                specimen_name=specimen_label,
+                pred_cls=SHORT_NAMES[top_cls],
+                conf_val=conf,
+                entropy_val=entropy,
+                cos_sim=cos_sim,
+                triage_status=triage_text,
+                top5_data=top5_pairs,
+                input_img_rgb=img_proc,
+                cam_overlay_rgb=cam_overlay_img
+            )
+
             st.download_button(
-                label="📥 Export Diagnostic Report (JSON)",
-                data=json.dumps(report_payload, indent=4),
-                file_name=f"diagnosis_{SHORT_NAMES[top_cls].replace(': ', '_').replace(' ', '_')}.json",
-                mime="application/json",
+                label="📄 Download Diagnostic Report (PDF)",
+                data=pdf_report_bytes,
+                file_name=f"report_{SHORT_NAMES[top_cls].replace(': ', '_').replace(' ', '_')}.pdf",
+                mime="application/pdf",
                 use_container_width=True
             )
 
