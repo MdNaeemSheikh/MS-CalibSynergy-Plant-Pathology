@@ -1,0 +1,4 @@
+Model,Params (M),Accuracy (%),Macro Precision,Macro Recall,Macro F1,Weighted F1,MCC,Cohen Kappa,ROC-AUC (OvR),ECE,Train Time (s),Latency (ms/img)
+DenseNet-121,7.49,95.63,0.9533,0.9489,0.9491,0.9554,0.9531,0.9529,0.9988,0.0773,200.0,2.91
+EfficientNet-B0,4.67,93.35,0.9253,0.9247,0.9221,0.9315,0.9286,0.9283,0.9969,0.0781,161.4,2.27
+ResNet-50,24.57,92.4,0.9228,0.9152,0.9175,0.9223,0.9182,0.918,0.9942,0.087,199.0,2.36
