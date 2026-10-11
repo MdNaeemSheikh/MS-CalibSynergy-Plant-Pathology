@@ -158,8 +158,9 @@ def compute_gradcam(model, target_layer, x_tensor, target_cls):
     return (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
 
 def make_heatmap_overlay(rgb_224, cam_norm):
-    heat = cv2.cvtColor(cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLOR_BGR2RGB)
-    return cv2.addWeighted(rgb_224, 0.52, heat, 0.48, 0)
+    heat_bgr = cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLORMAP_JET)
+    heat_rgb = cv2.cvtColor(heat_bgr, cv2.COLOR_BGR2RGB)
+    return cv2.addWeighted(rgb_224, 0.52, heat_rgb, 0.48, 0)
 
 def generate_pdf_report(specimen_name, pred_cls, conf_val, entropy_val, cos_sim, triage_status, top5_data, input_img_rgb, cam_overlay_rgb):
     pdf = FPDF(orientation="P", unit="mm", format="A4")
