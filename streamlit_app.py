@@ -1,5 +1,4 @@
 import os
-import io
 import time
 import cv2
 import torch
@@ -14,51 +13,51 @@ from huggingface_hub import hf_hub_download
 from fpdf import FPDF
 
 st.set_page_config(
-    page_title="MS-CalibSynergy-Net | Plant Pathology Diagnostic System",
+    page_title="PhytoScan AI | Plant Pathology Diagnostic Portal",
     page_icon="🌿",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
-    .hero-banner {
-        background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
-        border: 1px solid rgba(46, 204, 113, 0.35);
+    .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; max-width: 1400px; }
+    .app-header {
+        background: linear-gradient(135deg, #0b192c 0%, #16325b 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 12px;
-        padding: 20px 24px;
-        margin-bottom: 18px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        padding: 20px 26px;
+        margin-bottom: 20px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
     }
-    .hero-title {
-        font-size: 1.75rem;
+    .app-title {
+        font-size: 1.7rem;
         font-weight: 800;
         color: #ffffff;
-        margin: 0 0 6px 0;
+        margin: 0 0 4px 0;
         letter-spacing: -0.3px;
     }
-    .hero-sub {
+    .app-subtitle {
         font-size: 0.95rem;
-        color: #d1f2eb;
-        margin-bottom: 12px;
+        color: #b0c4de;
+        margin: 0;
     }
-    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .metric-pill {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.80rem;
-        font-weight: 600;
-        color: #f8f9f9;
+    div[data-testid="stFileUploader"] {
+        background: rgba(46, 204, 113, 0.07);
+        border: 2px dashed #2ecc71;
+        border-radius: 12px;
+        padding: 12px 16px;
+        transition: all 0.2s ease-in-out;
     }
-    .metric-pill span { color: #2ecc71; font-weight: 800; }
+    div[data-testid="stFileUploader"]:hover {
+        background: rgba(46, 204, 113, 0.12);
+        border-color: #58d68d;
+    }
     .kpi-card {
         background: #161b22;
         border: 1px solid #30363d;
         border-radius: 10px;
-        padding: 14px 16px;
+        padding: 15px 16px;
         text-align: center;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
@@ -66,29 +65,22 @@ st.markdown("""
     .kpi-value { font-size: 1.35rem; font-weight: 800; color: #f0f6fc; }
     .kpi-sub { font-size: 0.74rem; color: #58a6ff; margin-top: 3px; }
     .triage-pass {
-        background: rgba(35, 134, 54, 0.18);
-        border-left: 5px solid #2ea043;
+        background: rgba(35, 134, 54, 0.16);
+        border-left: 4px solid #2ea043;
         padding: 12px 16px;
         border-radius: 8px;
         color: #aff5b4;
         font-weight: 600;
-        margin: 12px 0;
+        margin: 14px 0;
     }
     .triage-warn {
-        background: rgba(210, 153, 34, 0.18);
-        border-left: 5px solid #d29922;
+        background: rgba(210, 153, 34, 0.16);
+        border-left: 4px solid #d29922;
         padding: 12px 16px;
         border-radius: 8px;
         color: #f8e3a1;
         font-weight: 600;
-        margin: 12px 0;
-    }
-    .control-box {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 20px;
+        margin: 14px 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -166,7 +158,7 @@ def compute_gradcam(model, target_layer, x_tensor, target_cls):
     return (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
 
 def make_heatmap_overlay(rgb_224, cam_norm):
-    heat = cv2.cvtColor(cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
+    heat = cv2.cvtColor(cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLOR_BGR2RGB)
     return cv2.addWeighted(rgb_224, 0.52, heat, 0.48, 0)
 
 def generate_pdf_report(specimen_name, pred_cls, conf_val, entropy_val, cos_sim, triage_status, top5_data, input_img_rgb, cam_overlay_rgb):
@@ -174,77 +166,72 @@ def generate_pdf_report(specimen_name, pred_cls, conf_val, entropy_val, cos_sim,
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    pdf.set_fill_color(22, 34, 42)
-    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_fill_color(11, 25, 44)
+    pdf.rect(0, 0, 210, 26, "F")
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_font("Helvetica", "B", 14)
     pdf.set_xy(12, 6)
-    pdf.cell(0, 8, "MS-CalibSynergy-Net: Plant Pathology Diagnostic Report", ln=True)
+    pdf.cell(0, 7, "Plant Pathology Diagnostic Report", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
-    pdf.set_xy(12, 14)
-    pdf.cell(0, 6, "AI-Assisted Foliar Disease Identification & Explainability Telemetry", ln=True)
+    pdf.set_x(12)
+    pdf.cell(0, 6, "Automated Foliar Disease Identification & Visual Attribution Analysis", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.set_text_color(40, 40, 40)
-    pdf.set_xy(12, 34)
+    pdf.set_text_color(35, 35, 35)
+    pdf.set_xy(12, 33)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "1. Specimen Diagnostic Summary", ln=True)
+    pdf.cell(0, 6, "1. Diagnostic Summary", new_x="LMARGIN", new_y="NEXT")
 
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Helvetica", "", 9.5)
     info_lines = [
-        f"Specimen Identifier: {specimen_name}",
-        f"Diagnosed Pathology: {pred_cls}",
-        f"Calibrated Prediction Confidence: {conf_val * 100:.2f}%",
-        f"Predictive Shannon Entropy: {entropy_val:.3f} (Max: 2.71)",
-        f"Grad-CAM Attribution Similarity: {cos_sim:.3f}",
-        f"Triage Determination: {triage_status}"
+        f"Specimen Source: {specimen_name}",
+        f"Identified Condition: {pred_cls}",
+        f"Diagnostic Confidence: {conf_val * 100:.2f}%",
+        f"Predictive Uncertainty (Entropy): {entropy_val:.3f}",
+        f"Spatial Attribution Agreement: {cos_sim:.3f}",
+        f"Clinical Status: {triage_status}"
     ]
-    pdf.set_x(14)
     for line in info_lines:
         pdf.set_x(14)
-        pdf.cell(0, 5, line, ln=True)
+        pdf.cell(0, 5.5, line, new_x="LMARGIN", new_y="NEXT")
 
-    tmp_in = "temp_input.jpg"
-    tmp_cam = "temp_cam.jpg"
+    tmp_in = "temp_input_leaf.jpg"
+    tmp_cam = "temp_cam_leaf.jpg"
     cv2.imwrite(tmp_in, cv2.cvtColor(input_img_rgb, cv2.COLOR_RGB2BGR))
     cv2.imwrite(tmp_cam, cv2.cvtColor(cam_overlay_rgb, cv2.COLOR_RGB2BGR))
 
     pdf.set_xy(12, 74)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "2. Specimen Visual Evidence & Explainability Heatmap", ln=True)
+    pdf.cell(0, 6, "2. Visual Evidence & Lesion Localization", new_x="LMARGIN", new_y="NEXT")
 
     pdf.image(tmp_in, x=20, y=82, w=75, h=75)
     pdf.image(tmp_cam, x=115, y=82, w=75, h=75)
 
-    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_font("Helvetica", "I", 8.5)
     pdf.set_xy(20, 159)
-    pdf.cell(75, 5, "Input Specimen (Preprocessed)", align="C")
+    pdf.cell(75, 5, "Analyzed Foliar Specimen", align="C")
     pdf.set_xy(115, 159)
-    pdf.cell(75, 5, "Attribution Consensus Map", align="C")
+    pdf.cell(75, 5, "Grad-CAM Lesion Attribution Map", align="C")
 
     pdf.set_xy(12, 170)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "3. Differential Diagnostic Probabilities (Top-5 Classes)", ln=True)
+    pdf.cell(0, 6, "3. Top-5 Differential Probabilities", new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_xy(14, 178)
-    pdf.cell(100, 6, "Pathology Class", border=1)
-    pdf.cell(60, 6, "Calibrated Posterior Probability", border=1, ln=True)
+    pdf.cell(105, 6.5, "Pathology Classification", border=1)
+    pdf.cell(55, 6.5, "Calibrated Probability", border=1, new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "", 9)
     for cls_name, p_val in top5_data:
         pdf.set_x(14)
-        pdf.cell(100, 6, cls_name, border=1)
-        pdf.cell(60, 6, f"{p_val * 100:.2f}%", border=1, ln=True)
+        pdf.cell(105, 6, cls_name, border=1)
+        pdf.cell(55, 6, f"{p_val * 100:.2f}%", border=1, new_x="LMARGIN", new_y="NEXT")
 
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_xy(12, 260)
-    pdf.cell(0, 5, "System Architecture: MS-CalibSynergy-Net | Evaluated on Held-Out Specimen Splits", align="C")
-
-    pdf_bytes = pdf.output()
     for tmp_file in [tmp_in, tmp_cam]:
         if os.path.exists(tmp_file):
             os.remove(tmp_file)
-    return pdf_bytes
+
+    return bytes(pdf.output())
 
 dn_model, ef_model, rn_model, meta_net, CFG, device = load_synergy_system()
 SHORT_NAMES = CFG["short_names"]
@@ -252,66 +239,55 @@ MEAN = np.array(CFG["dataset_mean"], dtype=np.float32)
 STD = np.array(CFG["dataset_std"], dtype=np.float32)
 
 st.markdown("""
-<div class="hero-banner">
-    <div class="hero-title">🌿 MS-CalibSynergy-Net: Plant Pathology Diagnostic & Explainable AI System</div>
-    <div class="hero-sub">Multi-Scale Calibrated Ensemble Architecture with Dual-Backbone Grad-CAM Attribution & Uncertainty-Aware Triage</div>
-    <div class="badge-row">
-        <div class="metric-pill">Test Accuracy: <span>96.39%</span></div>
-        <div class="metric-pill">Macro F1: <span>0.9597</span></div>
-        <div class="metric-pill">MCC: <span>0.9614</span></div>
-        <div class="metric-pill">Calibration Error (ECE): <span>0.0124</span></div>
-        <div class="metric-pill">95% Bootstrap CI: <span>[94.68%, 97.91%]</span></div>
-        <div class="metric-pill">Split Validation: <span>Group-Isolated (0 Leakage)</span></div>
-    </div>
+<div class="app-header">
+    <div class="app-title">🌿 Plant Pathology Diagnostic & Visual Explainability Portal</div>
+    <div class="app-subtitle">Multi-Scale Deep Learning Disease Identification, Lesion Localization & Uncertainty Triage</div>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="control-box">', unsafe_allow_html=True)
-st.markdown("### 📥 Foliar Specimen Input & Diagnostics Control")
-
-c_in1, c_in2, c_in3 = st.columns([1.2, 1.2, 1])
-
-sample_files = sorted([f for f in os.listdir(".") if f.startswith("sample_") and f.upper().endswith(".JPG")])
-
-with c_in1:
-    input_mode = st.radio(
-        "Source:",
-        ["Test Set Reference Specimens", "Upload Custom Leaf Image"],
-        horizontal=True
-    )
-    if input_mode == "Test Set Reference Specimens" and len(sample_files) > 0:
-        selected_sample = st.selectbox("Select Leaf:", sample_files, index=0)
-        rgb_input = np.array(Image.open(selected_sample).convert("RGB"))
-        specimen_label = selected_sample
-    else:
-        uploaded_file = st.file_uploader("Upload Image (JPG/PNG)", type=["jpg", "jpeg", "png"])
-        if uploaded_file is not None:
-            rgb_input = np.array(Image.open(uploaded_file).convert("RGB"))
-            specimen_label = uploaded_file.name
-        elif len(sample_files) > 0:
-            rgb_input = np.array(Image.open(sample_files[0]).convert("RGB"))
-            specimen_label = f"{sample_files[0]} (Default)"
-        else:
-            rgb_input = None
-            specimen_label = "None"
-
-with c_in2:
-    use_bilateral = st.toggle("Bilateral Denoising Gate", value=True, help="Removes sensor noise while preserving leaf lesion margins.")
-    use_4view_tta = st.toggle("4-View Test-Time Augmentation", value=True, help="Consensus across rotational views.")
-
-with c_in3:
-    custom_temp = st.slider("Calibration Temperature (T)", min_value=0.20, max_value=2.00, value=float(round(CFG["opt_temp"], 2)), step=0.05)
-    entropy_thresh = st.slider("Triage Threshold (τ)", min_value=0.15, max_value=1.20, value=float(CFG.get("entropy_threshold", 0.65)), step=0.05)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
 tab_studio, tab_benchmarks, tab_api = st.tabs([
-    "🔬 Diagnostic & Explainability Studio",
-    "📊 Experimental Benchmarks & XAI Audit",
-    "⚡ FastAPI & Docker Deployment"
+    "🔬 Diagnostic Workspace",
+    "📊 System Architecture & Validation",
+    "⚡ REST API & Container Deployment"
 ])
 
 with tab_studio:
+    up_col, ref_col = st.columns([1.4, 1])
+
+    sample_files = sorted([f for f in os.listdir(".") if f.startswith("sample_") and f.upper().endswith(".JPG")])
+
+    with up_col:
+        st.markdown("##### 📤 Upload Any Leaf Image for Instant Diagnosis")
+        uploaded_file = st.file_uploader(
+            "Drag and drop a leaf photo here, or click Browse Files (JPG, JPEG, PNG)",
+            type=["jpg", "jpeg", "png"]
+        )
+
+    with ref_col:
+        st.markdown("##### 🧪 Or Select a Reference Specimen & Configure Inference")
+        selected_sample = st.selectbox(
+            "Reference Specimen (Used when no custom image is uploaded):",
+            sample_files if len(sample_files) > 0 else ["None"],
+            index=0
+        )
+        with st.expander("⚙️ Advanced Inference & Triage Settings", expanded=False):
+            use_bilateral = st.toggle("Bilateral Sensor-Noise Filter", value=True)
+            use_4view_tta = st.toggle("4-View Test-Time Augmentation", value=True)
+            custom_temp = st.slider("Calibration Temperature (T)", 0.20, 2.00, float(round(CFG["opt_temp"], 2)), 0.05)
+            entropy_thresh = st.slider("Triage Uncertainty Threshold (τ)", 0.15, 1.20, float(CFG.get("entropy_threshold", 0.65)), 0.05)
+
+    rgb_input = None
+    specimen_label = "Custom Specimen"
+
+    if uploaded_file is not None:
+        rgb_input = np.array(Image.open(uploaded_file).convert("RGB"))
+        specimen_label = f"Uploaded: {uploaded_file.name}"
+    elif selected_sample != "None" and os.path.exists(selected_sample):
+        rgb_input = np.array(Image.open(selected_sample).convert("RGB"))
+        specimen_label = f"Reference: {selected_sample}"
+
+    st.markdown("---")
+
     if rgb_input is not None:
         t0 = time.time()
         img_resized = cv2.resize(rgb_input, (224, 224))
@@ -365,51 +341,51 @@ with tab_studio:
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predicted Pathology</div><div class="kpi-value" style="color:#2ecc71;">{SHORT_NAMES[top_cls]}</div><div class="kpi-sub">File: {specimen_label[:26]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Diagnosed Pathology</div><div class="kpi-value" style="color:#2ecc71;">{SHORT_NAMES[top_cls]}</div><div class="kpi-sub">{specimen_label[:30]}</div></div>', unsafe_allow_html=True)
         with k2:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Calibrated Confidence</div><div class="kpi-value">{conf*100:.2f}%</div><div class="kpi-sub">Temperature Scaled (T = {custom_temp:.2f})</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Diagnostic Confidence</div><div class="kpi-value">{conf*100:.2f}%</div><div class="kpi-sub">Calibrated Probability</div></div>', unsafe_allow_html=True)
         with k3:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Predictive Entropy H(p)</div><div class="kpi-value">{entropy:.3f} <span style="font-size:0.85rem;color:#8b949e;">/ {max_entropy:.2f}</span></div><div class="kpi-sub">Threshold τ = {entropy_thresh:.2f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Uncertainty (Entropy)</div><div class="kpi-value">{entropy:.3f} <span style="font-size:0.85rem;color:#8b949e;">/ {max_entropy:.2f}</span></div><div class="kpi-sub">Triage Threshold τ = {entropy_thresh:.2f}</div></div>', unsafe_allow_html=True)
         with k4:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-label">CAM Spatial Similarity</div><div class="kpi-value">{cos_sim:.3f}</div><div class="kpi-sub">Inference Time: {infer_ms:.0f} ms ({device.type.upper()})</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-label">Spatial Agreement</div><div class="kpi-value">{cos_sim:.3f}</div><div class="kpi-sub">Latency: {infer_ms:.0f} ms ({device.type.upper()})</div></div>', unsafe_allow_html=True)
 
         if entropy < entropy_thresh:
-            triage_text = "AUTOMATED DIAGNOSIS ACCEPTED"
-            st.markdown(f'<div class="triage-pass">✅ <b>AUTOMATED DIAGNOSIS ACCEPTED:</b> Predictive entropy (H = {entropy:.3f}) is below the threshold (τ = {entropy_thresh:.2f}). Reliable diagnosis confirmed for <b>{SHORT_NAMES[top_cls]}</b>.</div>', unsafe_allow_html=True)
+            triage_text = "AUTOMATED DIAGNOSIS VERIFIED"
+            st.markdown(f'<div class="triage-pass">✅ <b>AUTOMATED DIAGNOSIS VERIFIED:</b> Predictive uncertainty (H = {entropy:.3f}) is within safe clinical bounds (τ = {entropy_thresh:.2f}). Condition identified as <b>{SHORT_NAMES[top_cls]}</b>.</div>', unsafe_allow_html=True)
         else:
-            triage_text = "UNCERTAINTY TRIAGE ALERT (REFER TO EXPERT)"
-            st.markdown(f'<div class="triage-warn">⚠️ <b>UNCERTAINTY TRIAGE ALERT:</b> Elevated predictive entropy detected (H = {entropy:.3f} ≥ τ = {entropy_thresh:.2f}). Specimen flagged for manual examination.</div>', unsafe_allow_html=True)
+            triage_text = "MANUAL AGRONOMIST REVIEW RECOMMENDED"
+            st.markdown(f'<div class="triage-warn">⚠️ <b>MANUAL AGRONOMIST REVIEW RECOMMENDED:</b> Elevated diagnostic uncertainty detected (H = {entropy:.3f} ≥ τ = {entropy_thresh:.2f}). Please inspect lesion morphology manually.</div>', unsafe_allow_html=True)
 
-        st.markdown("#### 🔍 Multi-Backbone Grad-CAM Spatial Attribution")
+        st.markdown("#### 🔍 Visual Lesion Localization (Grad-CAM Attribution)")
         v1, v2, v3, v4 = st.columns(4)
         with v1:
-            st.image(img_proc, caption=f"1. Input Image ({'Bilateral Filtered' if use_bilateral else 'Raw RGB'})", use_container_width=True)
+            st.image(img_proc, caption="1. Analyzed Specimen", use_container_width=True)
         with v2:
-            st.image(make_heatmap_overlay(img_resized, cam_dn), caption="2. DenseNet-121 Grad-CAM (Texture Stream)", use_container_width=True)
+            st.image(make_heatmap_overlay(img_resized, cam_dn), caption="2. Fine Texture Stream (DenseNet-121)", use_container_width=True)
         with v3:
-            st.image(make_heatmap_overlay(img_resized, cam_ef), caption="3. EfficientNet-B0 Grad-CAM (Morphology Stream)", use_container_width=True)
+            st.image(make_heatmap_overlay(img_resized, cam_ef), caption="3. Morphology Stream (EfficientNet-B0)", use_container_width=True)
         with v4:
             cam_overlay_img = make_heatmap_overlay(img_resized, cam_syn)
-            st.image(cam_overlay_img, caption=f"4. Consensus Attribution Map (Sim: {cos_sim:.3f})", use_container_width=True)
+            st.image(cam_overlay_img, caption="4. Combined Consensus Heatmap", use_container_width=True)
 
         st.markdown("---")
         b_left, b_right = st.columns([1.15, 1])
 
         with b_left:
-            st.markdown("#### 📈 Top-5 Calibrated Posterior Probabilities")
+            st.markdown("#### 📈 Differential Diagnosis (Top-5 Probabilities)")
             top5_idx = np.argsort(probs)[::-1][:5]
             top5_pairs = [(SHORT_NAMES[i], float(probs[i])) for i in top5_idx]
             for rank_i, (c_name, p_val) in enumerate(top5_pairs, 1):
                 st.progress(p_val, text=f"#{rank_i} {c_name} — {p_val*100:.2f}%")
 
         with b_right:
-            st.markdown(f"#### 🧠 Per-Backbone Probability Breakdown (`{SHORT_NAMES[top_cls]}`)")
+            st.markdown(f"#### 🧠 Ensemble Stream Breakdown (`{SHORT_NAMES[top_cls]}`)")
             stream_df = pd.DataFrame({
-                "Model Component": [
+                "Diagnostic Stream": [
                     "DenseNet-121 (Texture Stream)",
                     "EfficientNet-B0 (Morphology Stream)",
                     "ResNet-50 (Residual Stream)",
-                    "MS-CalibSynergy-Net (Calibrated Output)"
+                    "Synergistic Calibrated Output"
                 ],
                 "Confidence (%)": [
                     round(float(dn_prob_vec[top_cls]) * 100, 2),
@@ -433,28 +409,28 @@ with tab_studio:
             )
 
             st.download_button(
-                label="📄 Download Diagnostic Report (PDF)",
+                label="📄 Download Clinical Diagnostic Report (PDF)",
                 data=pdf_report_bytes,
-                file_name=f"report_{SHORT_NAMES[top_cls].replace(': ', '_').replace(' ', '_')}.pdf",
+                file_name=f"Diagnostic_Report_{SHORT_NAMES[top_cls].replace(': ', '_').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
 
 with tab_benchmarks:
-    st.markdown("### 📊 Model Ablation Leaderboard & Explainability Audit")
+    st.markdown("### 📊 System Validation & Explainability Artifacts")
     csv_path = "research_artifacts/tables/definitive_6model_q1_leaderboard.csv"
     if os.path.exists(csv_path):
-        st.markdown("#### Held-Out Test Set Evaluation Across 6 Architectures ($N = 526$)")
+        st.markdown("#### Multi-Architecture Evaluation Summary")
         df_lead = pd.read_csv(csv_path)
         st.dataframe(df_lead, use_container_width=True, hide_index=True)
 
     fig_gallery = [
-        ("research_artifacts/figures/definitive_6model_q1_summary_clean.png", "1. Multi-Model Test Accuracy Ranking & Calibration Trade-off (Macro-F1 vs. ECE)"),
-        ("research_artifacts/figures/q1_novelty_calibration_and_gradcam.png", "2. Reliability Calibration Curve, Selective Risk-Coverage Triage & Grad-CAM Attribution"),
-        ("research_artifacts/figures/shap_global_and_local_summary_clean.png", "3. Global & Local SHAP Feature Attribution Across Ensemble Streams"),
-        ("research_artifacts/figures/lime_proposed_model_multicrop_clean.png", "4. Multi-Crop LIME Superpixel Attribution Audit (Bell Pepper, Potato & Tomato)"),
-        ("research_artifacts/figures/q1_generalization_and_statistical_rigor_clean.png", "5. Bootstrap Confidence Intervals, Noise Robustness & Hardware Latency Profiling"),
-        ("research_artifacts/figures/preprocessing_executive_summary.png", "6. Dataset Quality Audit, 3-Sigma Outlier Removal & Group-Isolated Split Distribution")
+        ("research_artifacts/figures/definitive_6model_q1_summary_clean.png", "1. Architecture Comparison & Calibration Analysis"),
+        ("research_artifacts/figures/q1_novelty_calibration_and_gradcam.png", "2. Reliability Curve, Selective Triage & Grad-CAM Verification"),
+        ("research_artifacts/figures/shap_global_and_local_summary_clean.png", "3. Global & Local SHAP Stream Attribution"),
+        ("research_artifacts/figures/lime_proposed_model_multicrop_clean.png", "4. Multi-Crop LIME Superpixel Attribution"),
+        ("research_artifacts/figures/q1_generalization_and_statistical_rigor_clean.png", "5. Bootstrap Confidence, Noise Tolerance & Latency Profile"),
+        ("research_artifacts/figures/preprocessing_executive_summary.png", "6. Dataset Quality Assurance & Split Distribution")
     ]
 
     for fig_path, fig_title in fig_gallery:
@@ -465,9 +441,6 @@ with tab_benchmarks:
 
 with tab_api:
     st.markdown("### ⚡ Containerized FastAPI Service & REST API Integration")
-    st.markdown("""
-    This repository includes a standalone **FastAPI REST service (`app.py`)** and **`Dockerfile`** for containerized inference and integration with external web or mobile clients.
-    """)
     c_api1, c_api2 = st.columns(2)
     with c_api1:
         st.markdown("#### 🐳 1. Build & Run Docker Container")
